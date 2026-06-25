@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Postfit — resize a batch to every platform size at once</title>
+<meta name="description" id="metaDesc" content="Drop your images and resize or compress them to exact Instagram, TikTok, YouTube, X, Facebook and LinkedIn sizes in seconds. Free, runs in your browser, nothing uploaded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Cloudflare Web Analytics (LIVE) — counts visits & page views -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "6007de8b998f480c8f65311932dca4f1"}'></script>
+<!-- End Cloudflare Web Analytics -->
+
+<!-- Google Analytics 4 (optional) — turns ON usage tracking (how many people resize/download).
+     The tool already fires events (process_images, download_image, download_zip, buy_click);
+     they stay dormant until GA4 is connected. To connect:
+       1. Create a free GA4 property at analytics.google.com and copy your Measurement ID (G-XXXXXXXXXX).
+       2. Replace BOTH "G-XXXXXXXXXX" placeholders below with your real ID.
+       3. Delete this line (the one starting with the opening comment) AND the closing-comment line,
+          so the two <script> tags become active.
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
+-->
+
+<style>
+  :root{
+    --bg:#F1F1FA;--surface:#FFFFFF;--ink:#17171F;--ink-soft:#6C6C7E;--ink-faint:#9A9AAB;
+    --line:#E6E6F1;--line-strong:#D6D6E6;--accent:#5B4FE9;--accent-deep:#4133C9;--accent-wash:#EEEBFD;
+    --pro:#FF6B5C;--pro-deep:#E5503F;--pro-wash:#FFEDEA;--ok:#11A36B;
+    --radius:14px;--radius-sm:10px;
+    --shadow:0 1px 2px rgba(23,23,31,.04), 0 8px 24px -12px rgba(23,23,31,.12);
+    --shadow-lg:0 24px 60px -20px rgba(23,23,31,.28);
+    --font-display:'Space Grotesk';--font-body:'Inter';
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:var(--font-body),system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+  ::selection{background:var(--accent);color:#fff}
+  .wrap{max-width:920px;margin:0 auto;padding:0 20px}
+
+  /* RTL + Arabic font */
+  html[dir="rtl"] body{font-family:'Cairo',system-ui,sans-serif}
+  html[dir="rtl"] .brand,html[dir="rtl"] .hero h1,html[dir="rtl"] .drop h3,html[dir="rtl"] .modal h3,
+  html[dir="rtl"] .results-head h2,html[dir="rtl"] .fmt .nm,html[dir="rtl"] .modal .price b{font-family:'Cairo',sans-serif}
+
+  /* top bar */
+  .bar{display:flex;align-items:center;justify-content:space-between;padding:18px 0;gap:12px}
+  .bar-right{display:flex;align-items:center;gap:10px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:-.02em}
+  .brand .glyph{width:30px;height:30px;border-radius:8px;flex:none;background:var(--ink);position:relative;overflow:hidden}
+  .brand .glyph::before{content:"";position:absolute;inset:7px 13px 7px 7px;background:var(--accent);border-radius:2px}
+  .brand .glyph::after{content:"";position:absolute;inset:7px 7px 13px 17px;background:var(--pro);border-radius:2px}
+
+  .lang-switch{display:inline-flex;background:#fff;border:1px solid var(--line-strong);border-radius:999px;padding:3px;gap:2px}
+  .lang-switch button{font-family:var(--font-body);font-weight:600;font-size:13px;border:none;background:none;color:var(--ink-soft);padding:5px 12px;border-radius:999px;cursor:pointer;transition:color .12s}
+  html[dir="rtl"] .lang-switch button{font-family:'Cairo',sans-serif}
+  .lang-switch button.on{background:var(--ink);color:#fff}
+
+  .pro-pill{font-family:var(--font-body);font-weight:600;font-size:13.5px;display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:999px;cursor:pointer;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);transition:border-color .15s, transform .06s}
+  html[dir="rtl"] .pro-pill{font-family:'Cairo',sans-serif}
+  .pro-pill:hover{border-color:var(--pro)}
+  .pro-pill:active{transform:translateY(1px)}
+  .pro-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--pro)}
+  .pro-pill.is-pro{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .pro-pill.is-pro .dot{background:var(--ok)}
+
+  /* hero */
+  .hero{padding:30px 0 26px;max-width:660px}
+  .hero h1{font-family:var(--font-display);font-weight:700;font-size:clamp(30px,5.4vw,46px);line-height:1.04;letter-spacing:-.03em}
+  html[dir="rtl"] .hero h1{line-height:1.2;letter-spacing:0}
+  .hero h1 .hl{color:var(--accent)}
+  .hero p{margin-top:14px;font-size:16.5px;color:var(--ink-soft);max-width:540px}
+  .trust{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px;color:var(--ink-faint)}
+  .trust span{display:inline-flex;align-items:center;gap:6px}
+  .trust svg{width:14px;height:14px;flex:none}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:8px;margin-bottom:18px}
+
+  .drop{border:2px dashed var(--line-strong);border-radius:var(--radius-sm);padding:34px 22px;text-align:center;cursor:pointer;transition:border-color .15s, background .15s;background:linear-gradient(180deg,#fff,#fafaff)}
+  .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-wash)}
+  .drop .ic{width:46px;height:46px;border-radius:12px;margin:0 auto 12px;background:var(--accent-wash);display:grid;place-items:center;color:var(--accent)}
+  .drop .ic svg{width:24px;height:24px}
+  .drop h3{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:-.01em}
+  .drop p{font-size:13.5px;color:var(--ink-faint);margin-top:4px}
+  .drop .browse{color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+
+  .controls{padding:18px 14px 6px;display:none}
+  .controls.show{display:block}
+  .ctl-row{margin-bottom:18px}
+  .ctl-label{display:flex;align-items:center;gap:8px;justify-content:space-between;font-size:12.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-bottom:9px}
+  html[dir="rtl"] .ctl-label{text-transform:none;letter-spacing:0;font-size:13px}
+  .ctl-label .hint{text-transform:none;letter-spacing:0;font-weight:450;color:var(--ink-faint)}
+
+  .formats{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:9px}
+  .fmt{position:relative;border:1.5px solid var(--line);border-radius:11px;padding:11px 10px 10px;cursor:pointer;background:#fff;text-align:start;transition:border-color .12s, box-shadow .12s;display:flex;flex-direction:column;gap:8px}
+  .fmt:hover{border-color:var(--line-strong)}
+  .fmt.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+  .fmt .shapebox{height:34px;display:flex;align-items:center;gap:8px}
+  .fmt .shape{background:var(--accent-wash);border:1.5px solid var(--accent);border-radius:2px;flex:none}
+  .fmt.sel .shape{background:var(--accent);border-color:var(--accent)}
+  .fmt .nm{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.2}
+  .fmt .dim{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums;direction:ltr}
+  .fmt .check{position:absolute;top:8px;inset-inline-end:8px;width:16px;height:16px;border-radius:50%;background:var(--accent);color:#fff;display:none;place-items:center}
+  .fmt .check svg{width:10px;height:10px}
+  .fmt.sel .check{display:grid}
+  .multi-note{margin-top:10px;font-size:12.5px;color:var(--pro-deep);display:none;align-items:center;gap:7px}
+  .multi-note.show{display:flex}
+  .multi-note a{color:var(--pro-deep);font-weight:600;cursor:pointer;text-decoration:underline}
+
+  .opts{display:flex;flex-wrap:wrap;gap:16px 22px;align-items:flex-end}
+  .opt{display:flex;flex-direction:column;gap:9px;min-width:0}
+  .seg{display:inline-flex;background:#F1F1F8;border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+  .seg button{font-family:var(--font-body);font-size:13px;font-weight:500;color:var(--ink-soft);border:none;background:none;padding:6px 13px;border-radius:6px;cursor:pointer;position:relative;transition:color .12s}
+  html[dir="rtl"] .seg button{font-family:'Cairo',sans-serif}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06);font-weight:600}
+  .seg button .pl{color:var(--pro);font-size:10px;font-weight:700;margin-inline-start:3px;vertical-align:top}
+
+  .slider{display:flex;align-items:center;gap:12px;min-width:200px}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:5px;background:linear-gradient(90deg,var(--accent) var(--pct,80%), var(--line-strong) var(--pct,80%));width:150px;cursor:pointer;direction:ltr}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.18);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer}
+  .slider .val{font-size:13.5px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;min-width:38px;direction:ltr}
+  .slider.disabled{opacity:.4;pointer-events:none}
+
+  .bgswatch{display:flex;align-items:center;gap:8px}
+  .bgswatch input[type=color]{width:30px;height:30px;border:1px solid var(--line-strong);border-radius:7px;background:none;cursor:pointer;padding:2px}
+  .bgswatch label{font-size:13px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;cursor:pointer}
+  .bgwrap{display:none}
+  .bgwrap.show{display:flex;flex-direction:column;gap:9px}
+
+  .action{padding:18px 14px 16px;display:none;border-top:1px solid var(--line);margin-top:6px}
+  .action.show{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .btn{font-family:var(--font-body);font-weight:600;font-size:15px;border:none;border-radius:11px;padding:13px 24px;cursor:pointer;display:inline-flex;align-items:center;gap:9px;transition:transform .06s, background .15s, box-shadow .15s}
+  html[dir="rtl"] .btn{font-family:'Cairo',sans-serif}
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--accent);color:#fff;box-shadow:0 6px 16px -6px rgba(91,79,233,.6)}
+  .btn-primary:hover{background:var(--accent-deep)}
+  .btn-primary:disabled{background:var(--line-strong);color:var(--ink-faint);box-shadow:none;cursor:not-allowed}
+  html[dir="rtl"] .btn-primary svg,html[dir="rtl"] .drop .ic svg{transform:scaleX(1)}
+  .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line-strong)}
+  .btn-ghost:hover{border-color:var(--ink-soft)}
+  .action .meta{font-size:13px;color:var(--ink-faint)}
+  .action .meta b{color:var(--ink-soft);font-weight:600}
+
+  .results{margin-bottom:40px}
+  .results-head{display:none;align-items:center;justify-content:space-between;margin:4px 2px 14px;flex-wrap:wrap;gap:12px}
+  .results-head.show{display:flex}
+  .results-head h2{font-family:var(--font-display);font-weight:600;font-size:19px;letter-spacing:-.01em}
+  .results-head .saved{font-size:13.5px;color:var(--ok);font-weight:600}
+  .dl-zip{font-family:var(--font-body);font-weight:600;font-size:14px;background:var(--ink);color:#fff;border:none;border-radius:10px;padding:10px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:transform .06s, opacity .15s}
+  html[dir="rtl"] .dl-zip{font-family:'Cairo',sans-serif}
+  .dl-zip:hover{opacity:.9}
+  .dl-zip:active{transform:translateY(1px)}
+  .dl-zip .pl{color:var(--pro);font-size:10px;font-weight:700;margin-inline-start:2px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+  .card .thumb{aspect-ratio:1/1;background:conic-gradient(#f4f4fa 90deg,#fff 0 180deg,#f4f4fa 0 270deg,#fff 0) 0 0/16px 16px;display:grid;place-items:center;position:relative;overflow:hidden}
+  .card .thumb img{max-width:100%;max-height:100%;display:block;object-fit:contain}
+  .card .badge{position:absolute;top:8px;inset-inline-start:8px;font-size:10.5px;font-weight:600;background:rgba(23,23,31,.82);color:#fff;padding:3px 8px;border-radius:6px;backdrop-filter:blur(4px);font-variant-numeric:tabular-nums;direction:ltr}
+  .card .info{padding:11px 12px 12px}
+  .card .fn{font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:ltr;text-align:start}
+  .card .sz{margin-top:5px;display:flex;align-items:center;gap:6px;font-size:12px;font-variant-numeric:tabular-nums;direction:ltr}
+  html[dir="rtl"] .card .sz{flex-direction:row}
+  .card .sz .old{color:var(--ink-faint);text-decoration:line-through}
+  .card .sz .arrow{color:var(--ink-faint)}
+  .card .sz .new{color:var(--ink);font-weight:600}
+  .card .sz .pc{margin-inline-start:auto;color:var(--ok);font-weight:600}
+  .card .sz .pc.up{color:var(--pro-deep)}
+  .card .dl{margin-top:10px;width:100%;font-family:var(--font-body);font-size:12.5px;font-weight:600;background:#F1F1F8;color:var(--ink);border:none;border-radius:8px;padding:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .12s}
+  html[dir="rtl"] .card .dl{font-family:'Cairo',sans-serif}
+  .card .dl:hover{background:var(--accent-wash);color:var(--accent)}
+  .card.pending .thumb{background:#f6f6fb}
+  .spinner{width:22px;height:22px;border:2.5px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .queue{padding:0 14px 4px;display:none}
+  .queue.show{display:block}
+  .queue-list{display:flex;flex-wrap:wrap;gap:8px}
+  .qchip{display:inline-flex;align-items:center;gap:8px;background:#F5F5FB;border:1px solid var(--line);border-radius:8px;padding:6px 8px 6px 10px;font-size:12.5px;max-width:220px}
+  .qchip .qn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft);direction:ltr}
+  .qchip .qx{width:16px;height:16px;border-radius:50%;background:var(--line-strong);color:#fff;border:none;cursor:pointer;display:grid;place-items:center;flex:none}
+  .qchip .qx svg{width:8px;height:8px}
+  .qlimit{margin-top:10px;font-size:12.5px;color:var(--pro-deep);display:none;align-items:center;gap:7px}
+  .qlimit.show{display:flex}
+  .qlimit a{color:var(--pro-deep);font-weight:600;cursor:pointer;text-decoration:underline}
+
+  .scrim{position:fixed;inset:0;background:rgba(23,23,31,.5);backdrop-filter:blur(3px);display:none;place-items:center;z-index:50;padding:20px}
+  .scrim.show{display:grid}
+  .modal{background:#fff;border-radius:18px;max-width:430px;width:100%;box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .2s ease}
+  @keyframes pop{from{transform:scale(.96) translateY(8px);opacity:0}to{transform:none;opacity:1}}
+  .modal-top{padding:26px 26px 0;position:relative}
+  .modal-top .x{position:absolute;top:18px;inset-inline-end:18px;width:30px;height:30px;border-radius:8px;border:none;background:#F1F1F8;color:var(--ink-soft);cursor:pointer;display:grid;place-items:center}
+  .modal-top .x:hover{background:var(--line-strong)}
+  .modal .kicker{font-size:12.5px;font-weight:700;color:var(--pro);text-transform:uppercase;letter-spacing:.06em}
+  html[dir="rtl"] .modal .kicker{letter-spacing:0}
+  .modal h3{font-family:var(--font-display);font-weight:700;font-size:24px;letter-spacing:-.02em;margin-top:8px}
+  .modal .price{margin-top:6px;font-size:14px;color:var(--ink-soft)}
+  .modal .price b{font-family:var(--font-display);color:var(--ink);font-size:22px;font-weight:700}
+  .feat{padding:20px 26px 4px;display:flex;flex-direction:column;gap:11px}
+  .feat .f{display:flex;align-items:flex-start;gap:11px;font-size:14px}
+  .feat .f svg{width:18px;height:18px;color:var(--ok);flex:none;margin-top:1px}
+  .feat .f b{font-weight:600}
+  .modal-foot{padding:18px 26px 26px;display:flex;flex-direction:column;gap:10px}
+  .modal-foot .buy{background:var(--pro);color:#fff;border:none;border-radius:12px;padding:14px;font-family:var(--font-body);font-weight:600;font-size:15.5px;cursor:pointer;transition:background .15s}
+  html[dir="rtl"] .modal-foot .buy{font-family:'Cairo',sans-serif}
+  .modal-foot .buy:hover{background:var(--pro-deep)}
+  .modal-foot .demo{font-size:12.5px;color:var(--ink-faint);text-align:center;line-height:1.5}
+  .modal-foot .demo a{color:var(--accent);cursor:pointer;text-decoration:underline;font-weight:500}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:13px 20px;border-radius:11px;font-size:14px;font-weight:500;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .25s, transform .25s;z-index:60;display:flex;align-items:center;gap:9px;max-width:90vw}
+  html[dir="rtl"] .toast{font-family:'Cairo',sans-serif}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast svg{width:17px;height:17px;color:var(--ok);flex:none}
+
+  .faq{margin:0 0 44px}
+  .faq h2{font-family:var(--font-display);font-weight:600;font-size:22px;letter-spacing:-.01em;margin-bottom:14px}
+  html[dir="rtl"] .faq h2{font-family:'Cairo',sans-serif}
+  .faq-item{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)}
+  .faq-item summary{cursor:pointer;padding:15px 18px;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:14px}
+  .faq-item summary::-webkit-details-marker{display:none}
+  .faq-item summary::after{content:"+";font-size:21px;line-height:1;color:var(--accent);font-weight:400;flex:none}
+  .faq-item[open] summary::after{content:"\2212"}
+  .faq-a{padding:0 18px 16px;font-size:14px;color:var(--ink-soft);line-height:1.65}
+  html[dir="rtl"] .faq-item summary,html[dir="rtl"] .faq-a{font-family:'Cairo',sans-serif}
+  html[dir="rtl"] .faq-a{line-height:1.95;padding-bottom:18px}
+  html[dir="rtl"] .faq-item summary{padding:16px 18px;line-height:1.7}
+
+  footer{padding:28px 0 36px;border-top:1px solid var(--line);margin-top:10px}
+  footer .fwrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--ink-faint)}
+  footer a{color:var(--ink-soft);text-decoration:none;cursor:pointer}
+  footer a:hover{color:var(--accent)}
+
+  @media (max-width:560px){
+    .hero{padding:22px 0 20px}
+    .opts{gap:14px 18px}
+    .btn{width:100%;justify-content:center}
+    .action .meta{width:100%;text-align:center}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+</style>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"WebApplication",
+  "name":"Postfit",
+  "url":"",
+  "applicationCategory":"MultimediaApplication",
+  "operatingSystem":"Any (runs in a web browser)",
+  "description":"Free browser-based tool to batch resize and compress images to the exact sizes used by social media platforms — Instagram, TikTok, YouTube, X, Facebook and LinkedIn. Runs entirely in the browser; no upload, no sign-up. Optional one-time $9 Pro unlock adds multi-format export, unlimited batches, WebP output and ZIP download.",
+  "featureList":["Batch image resizing","Social media size presets","Image compression","Crop-to-fill and fit-with-padding modes","WebP output","ZIP download","English and Arabic interface"],
+  "offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Free to use; optional one-time $9 Pro unlock"},
+  "inLanguage":["en","ar"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"FAQPage",
+  "mainEntity":[
+    {"@type":"Question","name":"Is Postfit free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Resizing and compressing up to 5 images at a time, one format at a time, is completely free with no sign-up. A one-time $9 Pro unlock adds unlimited batches, export to every social media size at once, WebP output and ZIP download."}},
+    {"@type":"Question","name":"Are my images uploaded anywhere?","acceptedAnswer":{"@type":"Answer","text":"No. Postfit runs entirely in your browser. Your images are processed on your own device and never leave it, so nothing is uploaded to any server."}},
+    {"@type":"Question","name":"How do I resize an image for Instagram?","acceptedAnswer":{"@type":"Answer","text":"Drop your image, choose the Instagram preset (square, portrait or story), pick crop-to-fill or fit-with-padding, then press process and download. It takes a few seconds."}},
+    {"@type":"Question","name":"Which platforms and sizes are supported?","acceptedAnswer":{"@type":"Answer","text":"Instagram post, portrait and story, TikTok, YouTube thumbnail, X, Facebook and LinkedIn, each at its exact recommended pixel size. You can also compress images and convert between JPG, PNG and WebP."}}
+  ]
+}
+</script>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="bar">
+    <div class="brand"><span class="glyph"></span><span>Postfit</span></div>
+    <div class="bar-right">
+      <div class="lang-switch" id="langSwitch">
+        <button data-lang="en" class="on">EN</button>
+        <button data-lang="ar">العربية</button>
+      </div>
+      <button class="pro-pill" id="proPill"><span class="dot"></span><span id="proPillText"></span></button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1 id="heroTitle"></h1>
+    <p id="heroSub"></p>
+    <div class="trust">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span id="t1"></span></span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg><span id="t2"></span></span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg><span id="t3"></span></span>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="drop" id="drop" tabindex="0" role="button">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg></div>
+      <h3 id="dropTitle"></h3>
+      <p id="dropSub"></p>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    </div>
+
+    <div class="queue" id="queue">
+      <div class="ctl-label" style="margin-top:16px"><span id="queueLabel"></span> <span class="hint" id="queueCount"></span></div>
+      <div class="queue-list" id="queueList"></div>
+      <div class="qlimit" id="qlimit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+        <span><span id="qlimitText"></span> <a id="qlimitUnlock"></a></span>
+      </div>
+    </div>
+
+    <div class="controls" id="controls">
+      <div class="ctl-row">
+        <div class="ctl-label"><span id="lblFormat"></span> <span class="hint" id="lblFormatHint"></span></div>
+        <div class="formats" id="formats"></div>
+        <div class="multi-note" id="multiNote">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
+          <span><span id="multiText"></span> <a id="multiUnlock"></a></span>
+        </div>
+      </div>
+
+      <div class="ctl-row">
+        <div class="opts">
+          <div class="opt">
+            <div class="ctl-label"><span id="lblMode"></span></div>
+            <div class="seg" id="modeSeg">
+              <button data-mode="cover" class="on" id="modeCover"></button>
+              <button data-mode="contain" id="modeContain"></button>
+            </div>
+          </div>
+          <div class="opt">
+            <div class="ctl-label"><span id="lblOutput"></span></div>
+            <div class="seg" id="fmtSeg">
+              <button data-out="image/jpeg" class="on">JPG</button>
+              <button data-out="image/png">PNG</button>
+              <button data-out="image/webp">WebP<span class="pl">PRO</span></button>
+            </div>
+          </div>
+          <div class="opt">
+            <div class="ctl-label"><span id="lblQuality"></span> <span class="hint" id="qNote"></span></div>
+            <div class="slider" id="qSlider">
+              <input type="range" id="quality" min="40" max="100" value="80" step="5">
+              <span class="val" id="qVal">80%</span>
+            </div>
+          </div>
+          <div class="opt bgwrap" id="bgwrap">
+            <div class="ctl-label"><span id="lblPad"></span></div>
+            <div class="bgswatch">
+              <input type="color" id="bgColor" value="#ffffff">
+              <label><input type="checkbox" id="bgTransparent"> <span id="lblTransparent"></span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action" id="action">
+      <button class="btn btn-primary" id="processBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6l6 6-6 6"/></svg>
+        <span id="processLabel"></span>
+      </button>
+      <button class="btn btn-ghost" id="clearBtn"></button>
+      <span class="meta" id="actionMeta"></span>
+    </div>
+  </div>
+
+  <section class="results">
+    <div class="results-head" id="resultsHead">
+      <div>
+        <h2 id="resultsTitle"></h2>
+        <span class="saved" id="savedTotal"></span>
+      </div>
+      <button class="dl-zip" id="zipBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        <span id="zipLabel"></span><span class="pl">PRO</span>
+      </button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="faq">
+    <h2 id="faqTitle"></h2>
+    <div id="faqList"></div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="fwrap">
+      <span id="footTag"></span>
+      <span id="footMade"></span>
+    </div>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-top">
+      <button class="x" id="modalX"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <div class="kicker" id="modalKicker"></div>
+      <h3 id="modalTitle"></h3>
+      <div class="price" id="modalPrice"></div>
+    </div>
+    <div class="feat" id="modalFeat"></div>
+    <div class="modal-foot">
+      <button class="buy" id="buyBtn"></button>
+      <div class="demo"><span id="demoText"></span> <a id="simUnlock"></a><span id="lockBack" style="display:none"> · <a id="relock"></a></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span id="toastText"></span></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- i18n strings ----------
+  const STR = {
+    en:{
+      docTitle:"Postfit — resize a batch to every platform size at once",
+      metaDesc:"Drop your images and resize or compress them to exact Instagram, TikTok, YouTube, X, Facebook and LinkedIn sizes in seconds. Free, runs in your browser, nothing uploaded.",
+      proUnlock:"Unlock Pro", proUnlocked:"Pro unlocked",
+      heroA:"Resize one batch to every ", heroHl:"social media platform", heroB:" size at once.",
+      heroSub:"Drop your images, pick the formats, and download perfectly sized posts in seconds. Everything runs in your browser — your files never leave your device.",
+      t1:"Nothing uploaded", t2:"Instant, in-browser", t3:"Free to use",
+      dropTitle:"Drop images here, or ", dropBrowse:"browse",
+      dropSub:"JPG, PNG or WebP — add as many as you like",
+      queueLabel:"In queue", imgWord:"image", imgWordP:"images",
+      qlimitText:"Free plan handles 5 images per batch.", qlimitCta:"Unlock unlimited →",
+      lblFormat:"Target format", lblFormatHint:"tap to select",
+      multiText:"Exporting to multiple formats at once is a Pro feature.", multiCta:"Unlock →",
+      lblMode:"Fit mode", modeCover:"Crop to fill", modeContain:"Fit & pad",
+      lblOutput:"Output", lblQuality:"Quality", pngNote:"PNG is lossless",
+      lblPad:"Padding color", lblTransparent:"Transparent",
+      processStart:"Add images to start", clear:"Clear",
+      resultsTitle:"Your resized images", zipLabel:"Download all as ZIP", working:"Working…",
+      download:"Download", failed:"Failed",
+      faqTitle:"Frequently asked questions",
+      faq:[
+        {q:"Is Postfit free?",a:"Yes. Resizing and compressing up to 5 images at a time, one format at a time, is completely free — no sign-up. A one-time $9 Pro unlock adds unlimited batches, export to every social media size at once, WebP output and ZIP download."},
+        {q:"Are my images uploaded anywhere?",a:"No. Postfit runs entirely in your browser. Your images are processed on your own device and never leave it, so nothing is uploaded to any server."},
+        {q:"How do I resize an image for Instagram?",a:"Drop your image, choose the Instagram preset (square, portrait or story), pick “crop to fill” or “fit & pad”, then press process and download — it takes a few seconds."},
+        {q:"Which platforms and sizes are supported?",a:"Instagram (post, portrait, story), TikTok, YouTube thumbnail, X, Facebook and LinkedIn — each at its exact recommended size. You can also compress images and convert between JPG, PNG and WebP."},
+        {q:"What is the difference between Free and Pro?",a:"Free handles 5 images per batch, one format at a time, in JPG or PNG. Pro ($9 once) removes the limit, exports to all sizes in a single click, adds WebP, and lets you download everything as a ZIP."},
+        {q:"Does it work on a phone?",a:"Yes. Postfit works in any modern browser on a phone, tablet or computer — there is no app to install."}
+      ],
+      footTag:"Postfit — image resizing that respects your privacy.", footMade:"Made for creators · ", goPro:"Go Pro",
+      modalKicker:"Postfit Pro", modalTitle:"Unlock the whole workflow",
+      priceA:"$9", priceB:" once · yours forever, no subscription",
+      feat1a:"Export every format at once", feat1b:" — one image becomes all your social media sizes in a single click.",
+      feat2a:"Unlimited batch size", feat2b:" — drop 5 or 500, no caps.",
+      feat3a:"WebP output", feat3b:" — smaller files, same quality.",
+      feat4a:"One-click ZIP", feat4b:" — download a whole batch at once.",
+      buy:"Get Postfit Pro — $9",
+      demoText:"This is a demo build.", simUnlock:"Simulate unlock", relock:"Re-lock",
+      tProUnlocked:"Pro unlocked — try multi-format export", tFree:"Back to free plan",
+      tNotImg:"Those weren’t image files", tNoJpgAlpha:"JPG can’t be transparent — switch to PNG or WebP",
+      tCheckout:"In the real build this opens checkout", tZip:"Building ZIP…",
+      tProcessFirst:"Process some images first", tZipLoad:"ZIP library still loading…",
+      // dynamic
+      processN:n=>`Process ${n} image${n>1?'s':''}`,
+      processNF:(n,f)=>`Process ${n} image${n>1?'s':''} → ${f} formats`,
+      metaJobs:(j,f)=>`Creating <b>${j}</b> file${j>1?'s':''} · ${f} format${f>1?'s':''}`,
+      queueCount:n=>`· ${n} image${n>1?'s':''}`,
+      savedPct:(d,sz,p)=>`${d} files ready · ${sz} smaller (${p}% saved)`,
+      savedTot:(d,sz)=>`${d} files ready · ${sz} total`
+    },
+    ar:{
+      docTitle:"Postfit — غيّر مقاسات صورك لكل منصات التواصل دفعة واحدة",
+      metaDesc:"غيّر مقاسات صورك أو اضغطها بأبعاد إنستقرام وتيك توك ويوتيوب وإكس وفيسبوك ولينكدإن خلال ثوانٍ. مجاني، يعمل داخل المتصفح، ولا يتم رفع أي ملف.",
+      proUnlock:"الترقية إلى Pro", proUnlocked:"تم تفعيل Pro",
+      heroA:"غيّر مقاسات صورك لكل ", heroHl:"منصات وسائل التواصل الاجتماعي", heroB:" دفعة واحدة.",
+      heroSub:"أضف صورك، اختر المقاسات المناسبة، وحمّل نسخًا جاهزة للنشر خلال ثوانٍ. كل شيء يتم داخل المتصفح — صورك لا تغادر جهازك أبدًا.",
+      t1:"لا يتم رفع أي ملف", t2:"فوري داخل المتصفح", t3:"مجاني الاستخدام",
+      dropTitle:"اسحب الصور هنا، أو ", dropBrowse:"اخترها من جهازك",
+      dropSub:"JPG أو PNG أو WebP — أضف أي عدد تريده من الصور",
+      queueLabel:"في قائمة الانتظار", imgWord:"صورة", imgWordP:"صور",
+      qlimitText:"الخطة المجانية تتيح 5 صور في كل دفعة.", qlimitCta:"ترقية بلا حدود ←",
+      lblFormat:"المقاس المطلوب", lblFormatHint:"اضغط للاختيار",
+      multiText:"تصدير أكثر من مقاس دفعة واحدة ميزة في Pro.", multiCta:"ترقية ←",
+      lblMode:"طريقة الملاءمة", modeCover:"ملء بالاقتصاص", modeContain:"احتواء مع حواف",
+      lblOutput:"صيغة الإخراج", lblQuality:"الجودة", pngNote:"‏PNG بدون فقدان للجودة",
+      lblPad:"لون الخلفية", lblTransparent:"شفاف",
+      processStart:"أضف صوراً للبدء", clear:"مسح",
+      resultsTitle:"صورك الجاهزة", zipLabel:"تحميل الكل في ملف ZIP", working:"جارٍ المعالجة…",
+      download:"تحميل", failed:"فشل",
+      faqTitle:"الأسئلة الشائعة",
+      faq:[
+        {q:"هل Postfit مجاني؟",a:"نعم. يمكنك تغيير المقاس وضغط حتى 5 صور في كل دفعة، وتصدير مقاس واحد في كل مرة مجانًا بالكامل وبدون تسجيل. تفعيل Pro بدفع 9$ مرة واحدة يفتح لك دفعات غير محدودة، والتصدير إلى جميع مقاسات منصات التواصل بضغطة واحدة، ودعم WebP، وتحميل النتائج كملف ZIP."},
+        {q:"هل يتم رفع صوري إلى أي مكان؟",a:"لا. يعمل Postfit بالكامل داخل متصفحك. تتم معالجة الصور على جهازك نفسه ولا تغادره أبدًا، لذلك لا يتم رفع أي صورة إلى أي خادم."},
+        {q:"كيف أغيّر مقاس صورة لإنستغرام؟",a:"أضف صورتك، واختر قالب إنستغرام المناسب مثل المنشور المربع أو العمودي أو الستوري، ثم اختر طريقة الملاءمة: «قصّ لملء المقاس» أو «احتواء مع هوامش». بعد ذلك اضغط معالجة وحمّل الصورة — العملية تستغرق ثوانٍ."},
+        {q:"ما المنصات والمقاسات المدعومة؟",a:"يدعم Postfit مقاسات إنستغرام، وتيك توك، وصورة يوتيوب المصغّرة، وX، وفيسبوك، ولينكدإن — وكلها بالمقاسات الموصى بها بدقة. يمكنك أيضًا ضغط الصور والتحويل بين JPG وPNG وWebP."},
+        {q:"ما الفرق بين الخطة المجانية وPro؟",a:"الخطة المجانية تتيح معالجة 5 صور في كل دفعة، وتصدير مقاس واحد في كل مرة، بصيغة JPG أو PNG. أما Pro بسعر 9$ مرة واحدة، فيزيل هذا الحد، ويصدّر كل المقاسات بضغطة واحدة، ويدعم WebP، ويتيح تحميل كل النتائج كملف ZIP."},
+        {q:"هل يعمل على الجوال؟",a:"نعم. يعمل Postfit على أي متصفح حديث في الجوال أو الجهاز اللوحي أو الكمبيوتر — بدون الحاجة إلى تثبيت تطبيق."}
+      ],
+      footTag:"Postfit — أداة تغيير حجم الصور التي تحترم خصوصيتك.", footMade:"صُنع للمبدعين · ", goPro:"الترقية إلى Pro",
+      modalKicker:"Postfit Pro", modalTitle:"افتح كل الإمكانيات",
+      priceA:"9$", priceB:" دفعة واحدة · ملكك للأبد، بدون اشتراك",
+      feat1a:"صدّر كل المقاسات دفعة واحدة", feat1b:" — صورة واحدة تتحوّل إلى جميع مقاسات منصاتك بنقرة واحدة.",
+      feat2a:"عدد غير محدود من الصور", feat2b:" — أضف 5 صور أو 500، بدون أي قيود.",
+      feat3a:"إخراج بصيغة WebP", feat3b:" — ملفات أصغر بنفس الجودة.",
+      feat4a:"تحميل ZIP بنقرة واحدة", feat4b:" — حمّل كل الصور دفعة واحدة.",
+      buy:"احصل على Postfit Pro — 9$",
+      demoText:"هذه نسخة تجريبية.", simUnlock:"تفعيل تجريبي", relock:"إلغاء التفعيل",
+      tProUnlocked:"تم تفعيل Pro — جرّب تصدير عدة مقاسات", tFree:"عدت إلى الخطة المجانية",
+      tNotImg:"الملفات المختارة ليست صوراً", tNoJpgAlpha:"‏JPG لا يدعم الشفافية — بدّل إلى PNG أو WebP",
+      tCheckout:"في النسخة الحقيقية يفتح هذا صفحة الدفع", tZip:"جارٍ إنشاء ملف ZIP…",
+      tProcessFirst:"حمّل بعض الصور أولاً", tZipLoad:"مكتبة ZIP قيد التحميل…",
+      processN:n=>`عالج ${n} صورة`,
+      processNF:(n,f)=>`عالج ${n} صورة ← ${f} مقاسات`,
+      metaJobs:(j,f)=>`إنشاء <b>${j}</b> ملف · ${f} مقاس`,
+      queueCount:n=>`· ${n} صورة`,
+      savedPct:(d,sz,p)=>`${d} ملفات جاهزة · أصغر بمقدار ${sz} (توفير ${p}%)`,
+      savedTot:(d,sz)=>`${d} ملفات جاهزة · ${sz} إجمالاً`
+    }
+  };
+
+  const FORMATS=[
+    {id:'ig-sq',en:'Instagram Post',ar:'منشور إنستقرام',w:1080,h:1080},
+    {id:'ig-port',en:'Instagram Portrait',ar:'إنستقرام عمودي',w:1080,h:1350},
+    {id:'ig-story',en:'Story / Reel',ar:'ستوري / ريلز',w:1080,h:1920},
+    {id:'tiktok',en:'TikTok',ar:'تيك توك',w:1080,h:1920},
+    {id:'yt-thumb',en:'YouTube Thumb',ar:'صورة يوتيوب',w:1280,h:720},
+    {id:'x-post',en:'X Post',ar:'منشور إكس',w:1600,h:900},
+    {id:'fb',en:'Facebook',ar:'فيسبوك',w:1200,h:630},
+    {id:'li',en:'LinkedIn',ar:'لينكدإن',w:1200,h:627}
+  ];
+  const FREE_LIMIT=5;
+
+  // ---------- state ----------
+  let lang='en', isPro=false, queue=[], selected=new Set(['ig-sq']);
+  let mode='cover', outType='image/jpeg', quality=0.8, bgColorVal='#ffffff', bgTransparent=false, results=[];
+
+  const $=id=>document.getElementById(id);
+  const T=()=>STR[lang];
+  const fmtBytes=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(2)+' MB';
+  const uid=()=>Math.random().toString(36).slice(2,9);
+  function track(name,params){try{if(typeof gtag==='function')gtag('event',name,params||{});}catch(e){}}
+
+  // ---------- language ----------
+  function injectHreflang(){
+    const origin=location.origin+location.pathname;
+    [['en',origin+'?lang=en'],['ar',origin+'?lang=ar'],['x-default',origin]].forEach(([hl,href])=>{
+      const l=document.createElement('link');l.rel='alternate';l.hreflang=hl;l.href=href;document.head.appendChild(l);
+    });
+  }
+
+  function setLang(next){
+    lang=next;
+    const rtl=lang==='ar';
+    document.documentElement.lang=lang;
+    document.documentElement.dir=rtl?'rtl':'ltr';
+    document.title=T().docTitle;
+    $('metaDesc').setAttribute('content',T().metaDesc);
+    // url param (no reload)
+    try{const u=new URL(location.href);u.searchParams.set('lang',lang);history.replaceState(null,'',u);}catch(e){}
+    $('langSwitch').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.lang===lang));
+    renderStatic(); renderFaq(); renderFormats(); applyProState(); updateAction(); renderQueue();
+  }
+
+  function renderStatic(){
+    const s=T();
+    $('proPillText').textContent=isPro?s.proUnlocked:s.proUnlock;
+    $('heroTitle').innerHTML=`${s.heroA}<span class="hl">${s.heroHl}</span>${s.heroB}`;
+    $('heroSub').textContent=s.heroSub;
+    $('t1').textContent=s.t1;$('t2').textContent=s.t2;$('t3').textContent=s.t3;
+    $('dropTitle').innerHTML=`${s.dropTitle}<span class="browse">${s.dropBrowse}</span>`;
+    $('dropSub').textContent=s.dropSub;
+    $('queueLabel').textContent=s.queueLabel;
+    $('qlimitText').textContent=s.qlimitText;$('qlimitUnlock').textContent=s.qlimitCta;
+    $('lblFormat').textContent=s.lblFormat;$('lblFormatHint').textContent=s.lblFormatHint;
+    $('multiText').textContent=s.multiText;$('multiUnlock').textContent=s.multiCta;
+    $('lblMode').textContent=s.lblMode;$('modeCover').textContent=s.modeCover;$('modeContain').textContent=s.modeContain;
+    $('lblOutput').textContent=s.lblOutput;$('lblQuality').textContent=s.lblQuality;
+    $('lblPad').textContent=s.lblPad;$('lblTransparent').textContent=s.lblTransparent;
+    $('clearBtn').textContent=s.clear;
+    $('resultsTitle').textContent=s.resultsTitle;$('zipLabel').textContent=s.zipLabel;
+    $('footTag').textContent=s.footTag;
+    $('footMade').innerHTML=`${s.footMade}<a id="footerPro">${s.goPro}</a>`;
+    $('footerPro').addEventListener('click',openModal);
+    $('modalKicker').textContent=s.modalKicker;$('modalTitle').textContent=s.modalTitle;
+    $('modalPrice').innerHTML=`<b>${s.priceA}</b>${s.priceB}`;
+    $('modalFeat').innerHTML=[[s.feat1a,s.feat1b],[s.feat2a,s.feat2b],[s.feat3a,s.feat3b],[s.feat4a,s.feat4b]]
+      .map(([a,b])=>`<div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><div><b>${a}</b>${b}</div></div>`).join('');
+    $('buyBtn').textContent=s.buy;
+    $('demoText').textContent=s.demoText;$('simUnlock').textContent=s.simUnlock;$('relock').textContent=s.relock;
+    // PNG note state
+    $('qNote').textContent = outType==='image/png'? s.pngNote : '';
+  }
+
+  function renderFaq(){
+    $('faqTitle').textContent=T().faqTitle;
+    $('faqList').innerHTML=T().faq.map(f=>`<details class="faq-item"><summary>${f.q}</summary><div class="faq-a">${f.a}</div></details>`).join('');
+  }
+
+  // ---------- toast ----------
+  function showToast(msg){$('toastText').textContent=msg;$('toast').classList.add('show');clearTimeout(showToast._t);showToast._t=setTimeout(()=>$('toast').classList.remove('show'),2600);}
+
+  // ---------- format cards ----------
+  function shapeStyle(w,h){const max=30,r=w/h;let sw,sh;if(r>=1){sw=max;sh=Math.round(max/r);}else{sh=max;sw=Math.round(max*r);}return `width:${sw}px;height:${Math.max(sh,6)}px`;}
+  function renderFormats(){
+    const el=$('formats');el.innerHTML='';
+    FORMATS.forEach(f=>{
+      const sel=selected.has(f.id);
+      const b=document.createElement('button');
+      b.className='fmt'+(sel?' sel':'');
+      b.innerHTML=`<div class="shapebox"><span class="shape" style="${shapeStyle(f.w,f.h)}"></span></div>
+        <div><div class="nm">${f[lang]}</div><div class="dim">${f.w}×${f.h}</div></div>
+        <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>`;
+      b.addEventListener('click',()=>toggleFormat(f.id));
+      el.appendChild(b);
+    });
+  }
+  function toggleFormat(id){
+    if(selected.has(id)){ if(selected.size===1)return; selected.delete(id); }
+    else{
+      if(!isPro){ selected.clear(); selected.add(id); $('multiNote').classList.add('show'); setTimeout(()=>$('multiNote').classList.remove('show'),3200); }
+      else selected.add(id);
+    }
+    renderFormats(); updateAction();
+  }
+
+  // ---------- files ----------
+  function addFiles(list){
+    const imgs=[...list].filter(f=>f.type.startsWith('image/'));
+    if(!imgs.length){showToast(T().tNotImg);return;}
+    imgs.forEach(f=>queue.push({id:uid(),file:f,name:f.name}));
+    if(!isPro&&queue.length>FREE_LIMIT){queue=queue.slice(0,FREE_LIMIT);$('qlimit').classList.add('show');}
+    renderQueue(); $('queue').classList.add('show');$('controls').classList.add('show');$('action').classList.add('show'); updateAction();
+  }
+  function renderQueue(){
+    const list=$('queueList');list.innerHTML='';
+    queue.forEach(q=>{
+      const c=document.createElement('div');c.className='qchip';
+      c.innerHTML=`<span class="qn">${q.name}</span><button class="qx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
+      c.querySelector('.qx').addEventListener('click',()=>{queue=queue.filter(x=>x.id!==q.id);if(queue.length<=FREE_LIMIT)$('qlimit').classList.remove('show');renderQueue();updateAction();if(!queue.length)hideWorkspace();});
+      list.appendChild(c);
+    });
+    $('queueCount').textContent=queue.length?T().queueCount(queue.length):'';
+  }
+  function hideWorkspace(){$('queue').classList.remove('show');$('controls').classList.remove('show');$('action').classList.remove('show');}
+
+  function updateAction(){
+    const n=queue.length,f=selected.size,jobs=n*f,s=T();
+    $('processBtn').disabled=n===0;
+    $('processLabel').textContent = n===0? s.processStart : (f>1? s.processNF(n,f) : s.processN(n));
+    $('actionMeta').innerHTML = n? s.metaJobs(jobs,f) : '';
+  }
+
+  // ---------- core resize ----------
+  function processOne(file,fmt){
+    return new Promise((resolve,reject)=>{
+      const img=new Image(),url=URL.createObjectURL(file);
+      img.onload=()=>{
+        URL.revokeObjectURL(url);
+        const canvas=document.createElement('canvas');canvas.width=fmt.w;canvas.height=fmt.h;
+        const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+        const transparent=bgTransparent&&outType!=='image/jpeg';
+        if(!transparent){ctx.fillStyle=bgColorVal;ctx.fillRect(0,0,fmt.w,fmt.h);}
+        const sr=img.width/img.height,dr=fmt.w/fmt.h;let dw,dh;
+        if(mode==='cover'){if(sr>dr){dh=fmt.h;dw=dh*sr;}else{dw=fmt.w;dh=dw/sr;}}
+        else{if(sr>dr){dw=fmt.w;dh=dw/sr;}else{dh=fmt.h;dw=dh*sr;}}
+        ctx.drawImage(img,(fmt.w-dw)/2,(fmt.h-dh)/2,dw,dh);
+        const q=outType==='image/png'?undefined:quality;
+        canvas.toBlob(blob=>{
+          if(!blob){reject(new Error('encode'));return;}
+          const ext=outType==='image/png'?'png':outType==='image/webp'?'webp':'jpg';
+          const base=file.name.replace(/\.[^.]+$/,'');
+          resolve({blob,url:URL.createObjectURL(blob),name:`${base}_${fmt.w}x${fmt.h}.${ext}`,oldSize:file.size,newSize:blob.size,w:fmt.w,h:fmt.h});
+        },outType,q);
+      };
+      img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('load'));};
+      img.src=url;
+    });
+  }
+
+  async function processAll(){
+    if(!queue.length)return;
+    results.forEach(r=>URL.revokeObjectURL(r.url));results=[];
+    const grid=$('grid');grid.innerHTML='';
+    $('resultsHead').classList.add('show');$('savedTotal').textContent=T().working;
+    const fmts=FORMATS.filter(f=>selected.has(f.id)),cards=[];
+    for(const q of queue)for(const f of fmts){
+      const card=document.createElement('div');card.className='card pending';
+      card.innerHTML=`<div class="thumb"><div class="spinner"></div></div><div class="info"><div class="fn">${q.name}</div><div class="sz"><span class="new">${f.w}×${f.h}</span></div></div>`;
+      grid.appendChild(card);cards.push({card,file:q.file,fmt:f});
+    }
+    let to=0,tn=0,done=0;
+    for(const job of cards){
+      try{const r=await processOne(job.file,job.fmt);results.push(r);to+=r.oldSize;tn+=r.newSize;done++;paintCard(job.card,r);}
+      catch(e){job.card.querySelector('.thumb').innerHTML=`<div style="font-size:12px;color:#E5503F">${T().failed}</div>`;}
+      await new Promise(r=>setTimeout(r,0));
+    }
+    const pct=to?Math.round((1-tn/to)*100):0;
+    $('savedTotal').textContent = pct>0? T().savedPct(done,fmtBytes(to-tn),pct) : T().savedTot(done,fmtBytes(tn));
+    $('resultsHead').scrollIntoView({behavior:'smooth',block:'nearest'});
+    track('process_images',{images:queue.length,formats:selected.size,files:done});
+  }
+
+  function paintCard(card,r){
+    card.classList.remove('pending');
+    const pct=Math.round((1-r.newSize/r.oldSize)*100),up=pct<0;
+    card.innerHTML=`<div class="thumb"><img src="${r.url}" alt="${r.name}"><span class="badge">${r.w}×${r.h}</span></div>
+      <div class="info"><div class="fn" title="${r.name}">${r.name}</div>
+      <div class="sz"><span class="old">${fmtBytes(r.oldSize)}</span><span class="arrow">→</span><span class="new">${fmtBytes(r.newSize)}</span><span class="pc ${up?'up':''}">${up?'+':'−'}${Math.abs(pct)}%</span></div>
+      <button class="dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>${T().download}</button></div>`;
+    card.querySelector('.dl').addEventListener('click',()=>{downloadBlob(r.blob,r.name);track('download_image');});
+  }
+
+  function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+
+  async function downloadZip(){
+    if(!isPro){openModal();return;}
+    if(!results.length){showToast(T().tProcessFirst);return;}
+    if(typeof JSZip==='undefined'){showToast(T().tZipLoad);return;}
+    showToast(T().tZip);
+    const zip=new JSZip();results.forEach(r=>zip.file(r.name,r.blob));
+    const out=await zip.generateAsync({type:'blob'});downloadBlob(out,'postfit-export.zip');track('download_zip',{files:results.length});
+  }
+
+  // ---------- pro ----------
+  function applyProState(){
+    $('proPill').classList.toggle('is-pro',isPro);
+    $('proPillText').textContent=isPro?T().proUnlocked:T().proUnlock;
+    $('lockBack').style.display=isPro?'':'none';
+    $('fmtSeg').querySelector('[data-out="image/webp"]').querySelectorAll('.pl').forEach(p=>p.style.display=isPro?'none':'');
+    $('zipBtn').querySelectorAll('.pl').forEach(p=>p.style.display=isPro?'none':'');
+    if(isPro)$('qlimit').classList.remove('show');
+  }
+  function openModal(){$('scrim').classList.add('show');}
+  function closeModal(){$('scrim').classList.remove('show');}
+
+  // ---------- events ----------
+  const drop=$('drop'),fileInput=$('fileInput');
+  drop.addEventListener('click',()=>fileInput.click());
+  drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();}});
+  fileInput.addEventListener('change',e=>{addFiles(e.target.files);fileInput.value='';});
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();if(ev==='dragleave'&&drop.contains(e.relatedTarget))return;drop.classList.remove('drag');}));
+  drop.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
+
+  $('modeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.mode;$('modeSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));$('bgwrap').classList.toggle('show',mode==='contain');});
+
+  $('fmtSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;const out=b.dataset.out;
+    if(out==='image/webp'&&!isPro){openModal();return;}
+    outType=out;$('fmtSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    const png=out==='image/png';$('qSlider').classList.toggle('disabled',png);$('qNote').textContent=png?T().pngNote:'';
+    if(out==='image/jpeg'&&bgTransparent){bgTransparent=false;$('bgTransparent').checked=false;}
+  });
+
+  const qInput=$('quality');
+  qInput.addEventListener('input',()=>{quality=+qInput.value/100;$('qVal').textContent=qInput.value+'%';qInput.style.setProperty('--pct',((qInput.value-40)/60*100)+'%');});
+  qInput.style.setProperty('--pct','66.6%');
+
+  $('bgColor').addEventListener('input',e=>{bgColorVal=e.target.value;});
+  $('bgTransparent').addEventListener('change',e=>{if(e.target.checked&&outType==='image/jpeg'){showToast(T().tNoJpgAlpha);e.target.checked=false;return;}bgTransparent=e.target.checked;});
+
+  $('processBtn').addEventListener('click',processAll);
+  $('clearBtn').addEventListener('click',()=>{queue=[];results.forEach(r=>URL.revokeObjectURL(r.url));results=[];renderQueue();hideWorkspace();$('grid').innerHTML='';$('resultsHead').classList.remove('show');$('qlimit').classList.remove('show');});
+  $('zipBtn').addEventListener('click',downloadZip);
+
+  $('langSwitch').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setLang(b.dataset.lang);});
+  $('proPill').addEventListener('click',openModal);
+  $('qlimitUnlock').addEventListener('click',openModal);
+  $('multiUnlock').addEventListener('click',openModal);
+  $('modalX').addEventListener('click',closeModal);
+  $('scrim').addEventListener('click',e=>{if(e.target===$('scrim'))closeModal();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+  $('buyBtn').addEventListener('click',()=>{showToast(T().tCheckout);track('buy_click');});
+  $('simUnlock').addEventListener('click',()=>{isPro=true;applyProState();closeModal();showToast(T().tProUnlocked);});
+  $('relock').addEventListener('click',()=>{isPro=false;applyProState();showToast(T().tFree);});
+
+  // ---------- init ----------
+  injectHreflang();
+  let initLang='en';
+  try{const p=new URL(location.href).searchParams.get('lang');if(p==='ar'||p==='en')initLang=p;else if((navigator.language||'').toLowerCase().startsWith('ar'))initLang='ar';}catch(e){}
+  setLang(initLang);
+})();
+</script>
+</body>
+</html>
